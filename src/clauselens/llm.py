@@ -4,7 +4,7 @@ Any OpenAI-compatible endpoint works — switched via environment variables
 (or a .env file), no code changes:
 
     CLAUSELENS_BASE_URL  (default https://openrouter.ai/api/v1)
-    CLAUSELENS_MODEL     (default nvidia/nemotron-3-ultra-550b-a55b:free)
+    CLAUSELENS_MODEL     (default google/gemma-4-31b-it:free)
     CLAUSELENS_API_KEY   (required)
 """
 
@@ -34,7 +34,7 @@ class LLMClient:
         self.base_url = base_url or os.getenv(
             "CLAUSELENS_BASE_URL", "https://openrouter.ai/api/v1")
         self.model = model or os.getenv(
-            "CLAUSELENS_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
+            "CLAUSELENS_MODEL", "google/gemma-4-31b-it:free")
         self.temperature = temperature
         key = api_key or os.getenv("CLAUSELENS_API_KEY")
         if not key:
