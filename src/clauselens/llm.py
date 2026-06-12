@@ -11,11 +11,16 @@ Any OpenAI-compatible endpoint works — switched via environment variables
 import json
 import os
 import re
+import time
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 load_dotenv()
+
+
+class TransientLLMError(Exception):
+    """Endpoint hiccup that is worth retrying (throttling, empty response)."""
 
 
 class LLMClient:
@@ -37,16 +42,36 @@ class LLMClient:
                 "CLAUSELENS_API_KEY is not set (put it in .env or the environment)")
         self._client = OpenAI(base_url=self.base_url, api_key=key)
 
-    def chat(self, system: str, user: str) -> str:
-        resp = self._client.chat.completions.create(
-            model=self.model,
-            temperature=self.temperature,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        )
-        return resp.choices[0].message.content or ""
+    def chat(self, system: str, user: str, retries: int = 4) -> str:
+        """Single chat turn with exponential backoff.
+
+        Free-tier endpoints fail in two ways that must both be retried:
+        transport errors (429/5xx) and, nastier, HTTP 200 with an empty
+        `choices` field when the upstream provider chokes.
+        """
+        delay = 2.0
+        last_err: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                resp = self._client.chat.completions.create(
+                    model=self.model,
+                    temperature=self.temperature,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                )
+                if not resp.choices:
+                    raise TransientLLMError(
+                        f"empty choices in response: {getattr(resp, 'error', None)}")
+                return resp.choices[0].message.content or ""
+            except (TransientLLMError, OpenAIError) as e:
+                last_err = e
+                if attempt == retries:
+                    break
+                time.sleep(delay)
+                delay *= 2
+        raise TransientLLMError(f"chat failed after {retries + 1} attempts: {last_err}")
 
     def chat_json(self, system: str, user: str, retries: int = 2) -> dict:
         """Chat expecting a JSON object back; retries on unparseable output."""
