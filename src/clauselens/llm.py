@@ -1,18 +1,21 @@
 """Provider-agnostic LLM client.
 
-Any OpenAI-compatible endpoint works: local Ollama (default), OpenRouter,
-or anything else — switched via environment variables, no code changes:
+Any OpenAI-compatible endpoint works — switched via environment variables
+(or a .env file), no code changes:
 
-    CLAUSELENS_BASE_URL  (default http://localhost:11434/v1  — local Ollama)
-    CLAUSELENS_MODEL     (default gemma4:latest)
-    CLAUSELENS_API_KEY   (default "ollama"; OpenRouter key when using it)
+    CLAUSELENS_BASE_URL  (default https://openrouter.ai/api/v1)
+    CLAUSELENS_MODEL     (default nvidia/nemotron-3-ultra-550b-a55b:free)
+    CLAUSELENS_API_KEY   (required)
 """
 
 import json
 import os
 import re
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
 
 
 class LLMClient:
@@ -24,13 +27,15 @@ class LLMClient:
         temperature: float = 0.0,
     ):
         self.base_url = base_url or os.getenv(
-            "CLAUSELENS_BASE_URL", "http://localhost:11434/v1")
-        self.model = model or os.getenv("CLAUSELENS_MODEL", "gemma4:latest")
+            "CLAUSELENS_BASE_URL", "https://openrouter.ai/api/v1")
+        self.model = model or os.getenv(
+            "CLAUSELENS_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
         self.temperature = temperature
-        self._client = OpenAI(
-            base_url=self.base_url,
-            api_key=api_key or os.getenv("CLAUSELENS_API_KEY", "ollama"),
-        )
+        key = api_key or os.getenv("CLAUSELENS_API_KEY")
+        if not key:
+            raise RuntimeError(
+                "CLAUSELENS_API_KEY is not set (put it in .env or the environment)")
+        self._client = OpenAI(base_url=self.base_url, api_key=key)
 
     def chat(self, system: str, user: str) -> str:
         resp = self._client.chat.completions.create(

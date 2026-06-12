@@ -22,8 +22,8 @@ annotated by lawyers).
 ## Design principles
 
 - One system done properly, not a "platform" done halfway
-- Provider-agnostic LLM layer: runs on a local model (privacy mode — contracts
-  never leave your machine) or any OpenAI-compatible API
+- Provider-agnostic LLM layer: any OpenAI-compatible endpoint works, switched
+  via environment variables (OpenRouter by default)
 - Every number in this README is reproducible by running the eval pipeline
 
 ## Status

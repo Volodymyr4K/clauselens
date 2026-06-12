@@ -1,12 +1,12 @@
 """Run clause-extraction eval on a CUAD split subset. Resumable.
 
 Predictions are cached per contract in eval_runs/<run>/predictions.jsonl, so
-an interrupted run (local models are slow) picks up where it left off and
-metrics can be recomputed without re-running the model.
+an interrupted run (rate limits, flaky endpoints) picks up where it left off
+and metrics can be recomputed without re-running the model.
 
 Usage:
-    uv run python scripts/run_eval.py --run gemma4-train10 --split train -n 10
-    uv run python scripts/run_eval.py --run gemma4-train10 --report-only
+    uv run python scripts/run_eval.py --run nemotron-train10 --split train -n 10
+    uv run python scripts/run_eval.py --run nemotron-train10 --report-only
 """
 
 import argparse

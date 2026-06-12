@@ -1,0 +1,7 @@
+{
+  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "base_url": "https://openrouter.ai/api/v1",
+  "split": "train",
+  "n": 10,
+  "iou_threshold": 0.3
+}
