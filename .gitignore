@@ -1,0 +1,23 @@
+# Local agent instructions (personal, not part of the project)
+CLAUDE.md
+
+# Dataset — large files, downloaded via scripts/download_data.sh
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & local config
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
