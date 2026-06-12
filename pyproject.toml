@@ -1,0 +1,26 @@
+[project]
+name = "clauselens"
+version = "0.1.0"
+description = "AI contract analysis: clause extraction, risk flagging, and cited Q&A, evaluated against CUAD"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Volodymyr Kozachok" }]
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.50",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clauselens"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
