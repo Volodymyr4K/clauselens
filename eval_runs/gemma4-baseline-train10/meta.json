@@ -1,0 +1,7 @@
+{
+  "model": "gemma4:latest",
+  "base_url": "http://localhost:11434/v1",
+  "split": "train",
+  "n": 10,
+  "iou_threshold": 0.3
+}
