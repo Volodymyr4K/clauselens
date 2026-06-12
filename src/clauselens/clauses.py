@@ -34,9 +34,11 @@ CLAUSE_TYPES: list[ClauseType] = [
     ClauseType(
         "parties", "Parties",
         "The two or more parties who signed the contract", risk=False, header=True,
-        hint="Quote the legal entity names and their defined aliases from the "
-             "preamble or signature block only — not later references to a party "
-             "by its alias."),
+        hint="Quote each party's legal name as one separate quote, and each "
+             "defined alias (e.g. \"Company\", \"Licensor\") as another separate "
+             "quote — never a whole preamble sentence. Only entities or persons "
+             "that are parties to this agreement; not officers who merely sign "
+             "on a party's behalf."),
     ClauseType(
         "agreement_date", "Agreement Date",
         "The date of the contract", risk=False, header=True),
@@ -57,7 +59,11 @@ CLAUSE_TYPES: list[ClauseType] = [
         "cap_on_liability", "Cap On Liability",
         "Does the contract include a cap on liability upon the breach of a party's "
         "obligation? This includes time limitation for the counterparty to bring "
-        "claims or maximum amount for recovery.", risk=True),
+        "claims or maximum amount for recovery.", risk=True,
+        hint="Includes sentences that exclude consequential, punitive or "
+             "indirect damages, set a maximum recovery amount, or set a time "
+             "limit for bringing claims. Quote each limiting sentence as a "
+             "separate quote."),
     ClauseType(
         "uncapped_liability", "Uncapped Liability",
         "Is a party's liability uncapped upon the breach of its obligation in the "
