@@ -40,7 +40,7 @@ def select_contracts(split: str, n: int):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--run", required=True, help="run name, e.g. gemma4-train10")
+    ap.add_argument("--run", required=True, help="run name, e.g. nemotron-train10")
     ap.add_argument("--split", choices=["train", "test"], default="train")
     ap.add_argument("-n", type=int, default=10, help="number of contracts")
     ap.add_argument("--report-only", action="store_true")
