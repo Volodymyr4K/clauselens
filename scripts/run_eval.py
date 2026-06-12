@@ -64,7 +64,17 @@ def main() -> None:
             "model": client.model, "base_url": client.base_url,
             "split": args.split, "n": args.n, "iou_threshold": IOU_THRESHOLD,
         }
-        (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
+        meta_file = run_dir / "meta.json"
+        if meta_file.exists():
+            prev = json.loads(meta_file.read_text())
+            same_setup = all(prev.get(k) == meta[k] for k in ("model", "split"))
+            if not same_setup:
+                sys.exit(
+                    f"refusing to resume '{args.run}': it was started with "
+                    f"{prev.get('model')} on {prev.get('split')} split, current "
+                    f"config is {meta['model']} on {meta['split']}. Mixing models "
+                    "in one run would corrupt the metrics — use a new --run name.")
+        meta_file.write_text(json.dumps(meta, indent=2))
         with pred_file.open("a") as out:
             for i, contract in enumerate(contracts):
                 if contract.title in done:
@@ -75,14 +85,18 @@ def main() -> None:
                     "title": contract.title,
                     "spans": [dataclasses.asdict(s) for s in result.spans],
                     "dropped_ungrounded": result.dropped_ungrounded,
+                    "failed_chunks": result.failed_chunks,
+                    "total_chunks": result.total_chunks,
                     "seconds": round(time.time() - t0, 1),
                 }
                 out.write(json.dumps(rec) + "\n")
                 out.flush()
                 done[contract.title] = result.spans
+                warn = (f" [LOST {result.failed_chunks}/{result.total_chunks} chunks]"
+                        if result.failed_chunks else "")
                 print(f"[{i + 1}/{len(contracts)}] {contract.title}"
                       f" ({len(contract.text)} chars, {rec['seconds']}s,"
-                      f" {len(result.spans)} spans)", file=sys.stderr)
+                      f" {len(result.spans)} spans){warn}", file=sys.stderr)
 
     evaluated = [c for c in contracts if c.title in done]
     if not evaluated:

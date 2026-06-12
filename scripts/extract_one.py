@@ -38,6 +38,7 @@ def main() -> None:
             print(f"   PRED @{p.start}: {p.text[:120]!r}")
 
     print(f"\nDropped ungrounded quotes: {result.dropped_ungrounded}")
+    print(f"Failed chunks: {result.failed_chunks}/{result.total_chunks}")
     print(f"Elapsed: {elapsed:.1f}s")
 
 

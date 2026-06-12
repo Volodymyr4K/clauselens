@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 
 from .clauses import CLAUSE_TYPES
-from .llm import LLMClient
+from .llm import LLMClient, TransientLLMError
 
 CHUNK_CHARS = 6000
 OVERLAP_CHARS = 800
@@ -61,6 +61,8 @@ class ExtractedSpan:
 class ExtractionResult:
     spans: list[ExtractedSpan]
     dropped_ungrounded: int  # quotes the model produced but we could not locate
+    failed_chunks: int       # chunks lost to unparseable output or dead endpoint
+    total_chunks: int        # failed_chunks/total_chunks = recall caveat for the run
 
 
 def chunk_text(text: str, size: int = CHUNK_CHARS, overlap: int = OVERLAP_CHARS):
@@ -101,17 +103,21 @@ def ground_quote(quote: str, chunk: str, chunk_offset: int) -> tuple[int, int] |
 def extract_clauses(text: str, client: LLMClient) -> ExtractionResult:
     spans: list[ExtractedSpan] = []
     dropped = 0
+    failed_chunks = 0
+    total_chunks = 0
+    valid_keys = {c.key for c in CLAUSE_TYPES}
     for offset, chunk in chunk_text(text):
+        total_chunks += 1
         prompt = USER_PROMPT_TEMPLATE.format(clause_list=_CLAUSE_LIST, chunk=chunk)
         try:
             raw = client.chat_json(SYSTEM_PROMPT, prompt)
-        except ValueError:
-            dropped += 1  # count the whole chunk as a failure signal
+        except (ValueError, TransientLLMError):
+            # a dead chunk costs recall but must not kill the whole run;
+            # the loss is reported, not swallowed
+            failed_chunks += 1
             continue
         for clause_key, quotes in raw.items():
-            if clause_key not in {c.key for c in CLAUSE_TYPES}:
-                continue
-            if not isinstance(quotes, list):
+            if clause_key not in valid_keys or not isinstance(quotes, list):
                 continue
             for quote in quotes:
                 if not isinstance(quote, str) or not quote.strip():
@@ -122,7 +128,9 @@ def extract_clauses(text: str, client: LLMClient) -> ExtractionResult:
                     continue
                 start, end = located
                 spans.append(ExtractedSpan(clause_key, text[start:end], start, end))
-    return ExtractionResult(spans=_dedupe(spans), dropped_ungrounded=dropped)
+    return ExtractionResult(
+        spans=_dedupe(spans), dropped_ungrounded=dropped,
+        failed_chunks=failed_chunks, total_chunks=total_chunks)
 
 
 def _dedupe(spans: list[ExtractedSpan]) -> list[ExtractedSpan]:
