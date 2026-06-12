@@ -9,7 +9,7 @@ is what makes citations honest — the model never gets to invent text.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .clauses import CLAUSE_TYPES
 from .llm import LLMClient, TransientLLMError
@@ -23,9 +23,16 @@ excerpts by quoting them VERBATIM. You never paraphrase, never summarize, and
 never quote text that is not present in the excerpt. If a clause type is not
 present in the excerpt, you return an empty list for it."""
 
-_CLAUSE_LIST = "\n".join(
-    f'- "{c.key}": {c.description}' for c in CLAUSE_TYPES
-)
+def _format_clause(c) -> str:
+    line = f'- "{c.key}": {c.description}'
+    return f"{line} Hint: {c.hint}" if c.hint else line
+
+
+HEADER_CLAUSES = [c for c in CLAUSE_TYPES if c.header]
+BODY_CLAUSES = [c for c in CLAUSE_TYPES if not c.header]
+
+_BODY_CLAUSE_LIST = "\n".join(_format_clause(c) for c in BODY_CLAUSES)
+_HEADER_CLAUSE_LIST = "\n".join(_format_clause(c) for c in HEADER_CLAUSES)
 
 USER_PROMPT_TEMPLATE = """\
 Below is an excerpt from a legal contract. For each clause type listed, find
@@ -36,10 +43,31 @@ Clause types:
 
 Rules:
 - Quote passages VERBATIM, character for character, from the excerpt.
-- A quote should be the minimal self-contained passage (typically one sentence
-  or list item), not a whole section.
+- Quote the complete sentence(s) or list item containing the clause — not a
+  fragment, and not a whole section.
 - If nothing in the excerpt matches a clause type, return [] for it.
 - Output ONLY a JSON object mapping every clause key to a list of quotes.
+
+Contract excerpt:
+---
+{chunk}
+---
+
+JSON:"""
+
+HEADER_PROMPT_TEMPLATE = """\
+Below is the {where} of a legal contract. Extract the document metadata
+listed, if present.
+
+Metadata types:
+{clause_list}
+
+Rules:
+- Quote VERBATIM, character for character, from the excerpt.
+- Quote each item once; do not quote running-text references to the parties
+  or to "this Agreement".
+- If an item is not present in this excerpt, return [] for it.
+- Output ONLY a JSON object mapping every metadata key to a list of quotes.
 
 Contract excerpt:
 ---
@@ -101,21 +129,58 @@ def ground_quote(quote: str, chunk: str, chunk_offset: int) -> tuple[int, int] |
 
 
 def extract_clauses(text: str, client: LLMClient) -> ExtractionResult:
-    spans: list[ExtractedSpan] = []
-    dropped = 0
-    failed_chunks = 0
-    total_chunks = 0
-    valid_keys = {c.key for c in CLAUSE_TYPES}
+    """Two-phase extraction.
+
+    Header phase: metadata clauses (title, parties, date) are asked only of
+    the document head and tail — preamble and signature block is where CUAD
+    annotates them, and asking every chunk floods precision with running-text
+    references. Body phase: the remaining clause types over all chunks.
+    """
+    state = _ExtractionState(text=text, client=client)
+
+    head = text[:CHUNK_CHARS]
+    state.process(
+        HEADER_PROMPT_TEMPLATE.format(
+            where="beginning", clause_list=_HEADER_CLAUSE_LIST, chunk=head),
+        chunk=head, offset=0, valid_keys={c.key for c in HEADER_CLAUSES})
+    if len(text) > CHUNK_CHARS:
+        tail_offset = len(text) - CHUNK_CHARS
+        tail = text[tail_offset:]
+        state.process(
+            HEADER_PROMPT_TEMPLATE.format(
+                where="end (signature pages)", clause_list=_HEADER_CLAUSE_LIST,
+                chunk=tail),
+            chunk=tail, offset=tail_offset, valid_keys={c.key for c in HEADER_CLAUSES})
+
+    body_keys = {c.key for c in BODY_CLAUSES}
     for offset, chunk in chunk_text(text):
-        total_chunks += 1
-        prompt = USER_PROMPT_TEMPLATE.format(clause_list=_CLAUSE_LIST, chunk=chunk)
+        state.process(
+            USER_PROMPT_TEMPLATE.format(clause_list=_BODY_CLAUSE_LIST, chunk=chunk),
+            chunk=chunk, offset=offset, valid_keys=body_keys)
+
+    return ExtractionResult(
+        spans=_dedupe(state.spans), dropped_ungrounded=state.dropped,
+        failed_chunks=state.failed_chunks, total_chunks=state.total_chunks)
+
+
+@dataclass
+class _ExtractionState:
+    text: str
+    client: LLMClient
+    spans: list[ExtractedSpan] = field(default_factory=list)
+    dropped: int = 0
+    failed_chunks: int = 0
+    total_chunks: int = 0
+
+    def process(self, prompt: str, chunk: str, offset: int, valid_keys: set[str]):
+        self.total_chunks += 1
         try:
-            raw = client.chat_json(SYSTEM_PROMPT, prompt)
+            raw = self.client.chat_json(SYSTEM_PROMPT, prompt)
         except (ValueError, TransientLLMError):
             # a dead chunk costs recall but must not kill the whole run;
             # the loss is reported, not swallowed
-            failed_chunks += 1
-            continue
+            self.failed_chunks += 1
+            return
         for clause_key, quotes in raw.items():
             if clause_key not in valid_keys or not isinstance(quotes, list):
                 continue
@@ -124,13 +189,11 @@ def extract_clauses(text: str, client: LLMClient) -> ExtractionResult:
                     continue
                 located = ground_quote(quote, chunk, offset)
                 if located is None:
-                    dropped += 1
+                    self.dropped += 1
                     continue
                 start, end = located
-                spans.append(ExtractedSpan(clause_key, text[start:end], start, end))
-    return ExtractionResult(
-        spans=_dedupe(spans), dropped_ungrounded=dropped,
-        failed_chunks=failed_chunks, total_chunks=total_chunks)
+                self.spans.append(
+                    ExtractedSpan(clause_key, self.text[start:end], start, end))
 
 
 def _dedupe(spans: list[ExtractedSpan]) -> list[ExtractedSpan]:

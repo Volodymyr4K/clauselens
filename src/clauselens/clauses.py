@@ -17,25 +17,38 @@ class ClauseType:
     cuad_name: str      # exact category name in CUAD question text
     description: str    # official CUAD annotation guideline
     risk: bool          # surfaced in the risk-flagging report
+    # metadata clauses live in the preamble and signature block; extracting
+    # them from every chunk floods precision with references like "Company"
+    header: bool = False
+    # extraction hint appended to the CUAD description where the guideline
+    # alone systematically misleads the model (diagnosed on train misses)
+    hint: str = ""
 
 
 CLAUSE_TYPES: list[ClauseType] = [
     ClauseType(
         "document_name", "Document Name",
-        "The name of the contract", risk=False),
+        "The name of the contract", risk=False, header=True,
+        hint="Quote the title as stated at the top of the document, not later "
+             "references like \"this Agreement\"."),
     ClauseType(
         "parties", "Parties",
-        "The two or more parties who signed the contract", risk=False),
+        "The two or more parties who signed the contract", risk=False, header=True,
+        hint="Quote the legal entity names and their defined aliases from the "
+             "preamble or signature block only — not later references to a party "
+             "by its alias."),
     ClauseType(
         "agreement_date", "Agreement Date",
-        "The date of the contract", risk=False),
+        "The date of the contract", risk=False, header=True),
     ClauseType(
         "governing_law", "Governing Law",
         "Which state/country's law governs the interpretation of the contract?",
         risk=False),
     ClauseType(
         "expiration_date", "Expiration Date",
-        "On what date will the contract's initial term expire?", risk=False),
+        "On what date will the contract's initial term expire?", risk=False,
+        hint="Term/duration provisions count even when no calendar date is "
+             "given, e.g. \"an initial term of five (5) years\"."),
     ClauseType(
         "anti_assignment", "Anti-Assignment",
         "Is consent or notice required of a party if the contract is assigned to "
