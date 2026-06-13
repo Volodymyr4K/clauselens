@@ -1,5 +1,7 @@
 # ClauseLens
 
+[![CI](https://github.com/Volodymyr4K/clauselens/actions/workflows/ci.yml/badge.svg)](https://github.com/Volodymyr4K/clauselens/actions/workflows/ci.yml)
+
 AI-powered contract analysis: extracts key clauses from legal contracts, flags
 risky terms, and answers questions about a document with **exact citations** —
 and, unusually for a side project, **honestly evaluated against expert
