@@ -49,10 +49,13 @@ Everything runs on free, open models through any OpenAI-compatible endpoint
 | IoU-or-verbatim match | 0.62 | 0.71 | **0.66** | 0.643 |
 | strict positional-only | 0.59 | — | 0.614 | 0.604 |
 
+![Clause extraction F1 by type](docs/img/extraction_f1_by_clause.png)
+
 Strong, stable types: `governing_law` (F1 0.92), `document_name` (0.79),
 `agreement_date` (0.75), `renewal_term` (0.74), `license_grant` (0.71).
-Weak types, honestly: `expiration_date` (0.49 — over-fires), `exclusivity`
-(0.46), `non_compete` (0.40 on few examples). Full per-clause table:
+Weak types, honestly (orange): `expiration_date` (0.49 — over-fires),
+`exclusivity` (0.46), `non_compete` (0.40 on few examples). Full per-clause
+table:
 [`eval_runs/gemma4-31b-iter2-train30/report.md`](eval_runs/gemma4-31b-iter2-train30/report.md).
 
 ### Model comparison (same 15 train contracts, identical pipeline)
@@ -61,6 +64,8 @@ Weak types, honestly: `expiration_date` (0.49 — over-fires), `exclusivity`
 |---|---|---|---|
 | **Gemma 4 31B** (default) | **0.61** | **0.574** | **65 s** |
 | GPT-OSS 120B | 0.59 | 0.515 | 115 s |
+
+![Model comparison](docs/img/model_comparison.png)
 
 The smaller model chosen for speed is **also at least as accurate** and ~2×
 faster, so nothing is left on the table by using it. (Llama 3.3 70B was
@@ -203,8 +208,9 @@ uv run python scripts/run_qa_eval.py --run my-qa-run -n 10
 Tests and linting:
 
 ```bash
-uv run pytest -q          # 41 tests
+uv run pytest -q          # 49 tests
 uv run ruff check src scripts tests
+uv run --extra viz python scripts/plot_results.py   # regenerate result charts
 ```
 
 ---
