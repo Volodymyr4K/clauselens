@@ -10,6 +10,7 @@ dependencies = [
     "openai>=1.50",
     "pydantic>=2.7",
     "python-dotenv>=1.2.2",
+    "rank-bm25>=0.2.2",
 ]
 
 [project.optional-dependencies]
