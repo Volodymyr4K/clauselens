@@ -105,3 +105,28 @@ CLAUSE_TYPES: list[ClauseType] = [
 
 BY_KEY: dict[str, ClauseType] = {c.key: c for c in CLAUSE_TYPES}
 BY_CUAD_NAME: dict[str, ClauseType] = {c.cuad_name: c for c in CLAUSE_TYPES}
+
+# Natural-language questions for the Q&A path and its citation eval. Phrased as
+# a user would ask, not as the CUAD guideline reads.
+QUESTIONS: dict[str, str] = {
+    "document_name": "What is the title of this contract?",
+    "parties": "Who are the parties to this contract?",
+    "agreement_date": "What is the date of this agreement?",
+    "governing_law": "Which state or country's law governs this contract?",
+    "expiration_date": "When does the initial term of this contract expire?",
+    "anti_assignment": "Does assigning this contract to a third party require "
+                       "the other party's consent or notice?",
+    "cap_on_liability": "Does this contract cap or limit a party's liability?",
+    "uncapped_liability": "Does this contract leave any liability uncapped?",
+    "license_grant": "Does this contract grant any license from one party to "
+                     "the other?",
+    "audit_rights": "Does either party have the right to audit the other?",
+    "termination_for_convenience": "Can a party terminate this contract for "
+                                   "convenience, without cause?",
+    "exclusivity": "Does this contract contain any exclusivity or exclusive "
+                   "dealing commitment?",
+    "renewal_term": "What is the renewal term after the initial term expires?",
+    "non_compete": "Does this contract restrict a party from competing with "
+                   "the other?",
+}
+assert set(QUESTIONS) == set(BY_KEY), "every clause type needs a Q&A question"
