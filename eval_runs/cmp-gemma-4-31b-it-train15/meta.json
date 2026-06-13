@@ -1,0 +1,7 @@
+{
+  "model": "google/gemma-4-31b-it:free",
+  "base_url": "https://openrouter.ai/api/v1",
+  "split": "train",
+  "n": 15,
+  "iou_threshold": 0.3
+}
