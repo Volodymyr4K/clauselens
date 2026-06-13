@@ -1,0 +1,6 @@
+{
+  "model": "google/gemma-4-31b-it:free",
+  "split": "train",
+  "n": 10,
+  "task": "qa_citation_eval"
+}
