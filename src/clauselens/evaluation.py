@@ -1,17 +1,32 @@
 """Span-level evaluation against CUAD gold annotations.
 
-A predicted span matches a gold span of the same clause type when their
-character-range IoU (intersection over union) clears a threshold. Greedy
-one-to-one matching: each gold span can be claimed by at most one prediction.
+A predicted span matches a gold span of the same clause type when EITHER:
+  1. their character-range IoU clears a threshold (positional match), OR
+  2. the prediction reproduces the gold span's text verbatim, case- and
+     whitespace-normalized (text match).
 
-Threshold choice (documented, not hidden): 0.3. Lawyers annotate minimal
-passages while LLMs tend to quote the enclosing sentence; demanding IoU 0.5+
-punishes a prediction that fully contains the gold answer with extra context.
-At 0.3 a prediction still has to land on the right passage — random text
-nearby will not clear it. Sensitivity to this threshold is reported by the
-eval script rather than asserted away.
+Greedy one-to-one matching: each gold span can be claimed by at most one
+prediction.
+
+Why the text-match arm (2): CUAD's own evaluation is text-overlap retrieval,
+not character-offset alignment. Some answers — most visibly the document
+title — appear as the identical string at several offsets (an exhibit-header
+caption and an inline title), while the annotators marked exactly one of them.
+Pure offset IoU then scores a verbatim-correct answer as both a false positive
+and a false negative. Reproducing a gold answer string verbatim is a true
+positive by any reasonable reading, so it is counted as one. This arm is
+strict: it requires near-equality of the answer text, not mere overlap, so it
+cannot admit unrelated predictions.
+
+Threshold choice for arm (1) (documented, not hidden): 0.3. Lawyers annotate
+minimal passages while LLMs tend to quote the enclosing sentence; demanding
+IoU 0.5+ punishes a prediction that fully contains the gold answer with extra
+context. At 0.3 a prediction still has to land on the right passage. Both the
+strict positional-only score and the combined score are reported, so the
+effect of arm (2) is visible rather than buried.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from .dataset import Contract, GoldSpan
@@ -24,6 +39,10 @@ def char_iou(a_start: int, a_end: int, b_start: int, b_end: int) -> float:
     inter = max(0, min(a_end, b_end) - max(a_start, b_start))
     union = (a_end - a_start) + (b_end - b_start) - inter
     return inter / union if union else 0.0
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip().lower()
 
 
 @dataclass
@@ -86,8 +105,13 @@ def match_contract(
     predicted: list[ExtractedSpan],
     contract: Contract,
     iou_threshold: float = IOU_THRESHOLD,
+    text_match: bool = True,
 ) -> tuple[dict[str, ClauseCounts], dict[str, bool]]:
-    """Greedy IoU matching for one contract.
+    """Greedy matching for one contract.
+
+    With text_match=True a prediction also matches a gold span whose text it
+    reproduces verbatim (normalized), not only one it positionally overlaps.
+    Set text_match=False for the strict positional-only score.
 
     Returns per-clause counts and, for clause types with no gold spans,
     whether the system also predicted nothing (absence map).
@@ -107,25 +131,42 @@ def match_contract(
                 counts.setdefault(clause, ClauseCounts()).fp += len(preds)
             continue
         c = counts.setdefault(clause, ClauseCounts())
-        unmatched_gold = list(_gold_ranges(gold_spans))
+        unmatched = list(gold_spans)
         for p in sorted(preds, key=lambda p: p.start):
-            best_i, best_iou = -1, 0.0
-            for i, (gs, ge) in enumerate(unmatched_gold):
-                iou = char_iou(p.start, p.end, gs, ge)
-                if iou > best_iou:
-                    best_i, best_iou = i, iou
-            if best_iou >= iou_threshold:
+            idx = _best_gold(p, unmatched, iou_threshold, text_match)
+            if idx is not None:
                 c.tp += 1
-                unmatched_gold.pop(best_i)
+                unmatched.pop(idx)
             else:
                 c.fp += 1
-        c.fn += len(unmatched_gold)
+        c.fn += len(unmatched)
     return counts, absence
 
 
-def _gold_ranges(gold_spans: list[GoldSpan]):
-    for g in gold_spans:
-        yield g.start, g.start + len(g.text)
+def _best_gold(
+    pred: ExtractedSpan,
+    unmatched: list[GoldSpan],
+    iou_threshold: float,
+    text_match: bool,
+) -> int | None:
+    """Index of the gold span this prediction claims, or None.
+
+    Prefers the strongest positional overlap; falls back to a verbatim text
+    match (used for identical strings sitting at different offsets).
+    """
+    best_i, best_iou = None, iou_threshold
+    for i, g in enumerate(unmatched):
+        iou = char_iou(pred.start, pred.end, g.start, g.start + len(g.text))
+        if iou >= best_iou:
+            best_i, best_iou = i, iou
+    if best_i is not None:
+        return best_i
+    if text_match:
+        pred_norm = _norm(pred.text)
+        for i, g in enumerate(unmatched):
+            if _norm(g.text) == pred_norm:
+                return i
+    return None
 
 
 def aggregate(

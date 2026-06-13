@@ -68,6 +68,50 @@ class TestMatchContract:
         assert counts["audit_rights"].fp == 1
 
 
+class TestTextMatch:
+    def test_identical_string_different_offset_is_tp(self):
+        # gold title at offset 500; model quoted the same title grounded at 16
+        contract = make_contract({"document_name": [GoldSpan("SUPPLY AGREEMENT", 500)]})
+        preds = [ExtractedSpan("document_name", "SUPPLY AGREEMENT", 16, 32)]
+        counts, _ = match_contract(preds, contract)
+        c = counts["document_name"]
+        assert (c.tp, c.fp, c.fn) == (1, 0, 0)
+
+    def test_case_and_whitespace_normalized(self):
+        contract = make_contract(
+            {"document_name": [GoldSpan("Distributor Agreement", 500)]})
+        preds = [ExtractedSpan("document_name", "DISTRIBUTOR  AGREEMENT", 16, 38)]
+        counts, _ = match_contract(preds, contract)
+        assert counts["document_name"].tp == 1
+
+    def test_text_match_disabled_keeps_strict(self):
+        contract = make_contract({"document_name": [GoldSpan("SUPPLY AGREEMENT", 500)]})
+        preds = [ExtractedSpan("document_name", "SUPPLY AGREEMENT", 16, 32)]
+        counts, _ = match_contract(preds, contract, text_match=False)
+        c = counts["document_name"]
+        assert (c.tp, c.fp, c.fn) == (0, 1, 1)  # offsets disagree -> miss
+
+    def test_text_match_does_not_admit_unrelated_text(self):
+        contract = make_contract({"document_name": [GoldSpan("SUPPLY AGREEMENT", 500)]})
+        preds = [ExtractedSpan("document_name", "this Agreement", 16, 30)]
+        counts, _ = match_contract(preds, contract)
+        c = counts["document_name"]
+        assert (c.tp, c.fp) == (0, 1)
+
+    def test_positional_match_preferred_over_text(self):
+        # two identical gold strings; a positionally-overlapping pred should
+        # claim the overlapped one, leaving the other for a second pred
+        contract = make_contract(
+            {"parties": [GoldSpan("Company", 100), GoldSpan("Company", 900)]})
+        preds = [
+            ExtractedSpan("parties", "Company", 98, 105),   # overlaps gold@100
+            ExtractedSpan("parties", "Company", 500, 507),  # text-matches gold@900
+        ]
+        counts, _ = match_contract(preds, contract)
+        c = counts["parties"]
+        assert (c.tp, c.fp, c.fn) == (2, 0, 0)
+
+
 class TestAggregate:
     def test_sums_and_specificity(self):
         c1 = {"exclusivity": ClauseCounts(tp=2, fp=1, fn=0)}

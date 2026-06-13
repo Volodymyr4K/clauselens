@@ -98,16 +98,26 @@ def main() -> None:
                       f" ({len(contract.text)} chars, {rec['seconds']}s,"
                       f" {len(result.spans)} spans){warn}", file=sys.stderr)
 
-    evaluated = [c for c in contracts if c.title in done]
+    if args.report_only:
+        # score every cached contract, not a -n-sized subset of them
+        by_title = {c.title: c for c in load_contracts()}
+        if args.split == "test":
+            by_title = {c.title: c for c in load_contracts(DATA_DIR / "test.json")}
+        evaluated = [by_title[t] for t in done if t in by_title]
+    else:
+        evaluated = [c for c in contracts if c.title in done]
     if not evaluated:
         print("no predictions yet", file=sys.stderr)
         return
-    report = aggregate([match_contract(done[c.title], c) for c in evaluated])
+    report = aggregate(
+        [match_contract(done[c.title], c, text_match=True) for c in evaluated])
+    strict = aggregate(
+        [match_contract(done[c.title], c, text_match=False) for c in evaluated])
 
     lines = [
         f"# Eval report: {args.run}",
         f"\nContracts evaluated: {len(evaluated)} ({args.split} split)",
-        f"Span match: char IoU >= {IOU_THRESHOLD}",
+        f"Match: char IoU >= {IOU_THRESHOLD} OR verbatim text match",
         "\n| Clause | P | R | F1 | TP | FP | FN | Absent-spec |",
         "|---|---|---|---|---|---|---|---|",
     ]
@@ -122,7 +132,11 @@ def main() -> None:
     lines.append(
         f"| **micro** | **{m.precision:.2f}** | **{m.recall:.2f}** "
         f"| **{m.f1:.2f}** | {m.tp} | {m.fp} | {m.fn} | |")
+    sm = strict.micro()
     lines.append(f"\nMacro F1: {report.macro_f1():.3f}")
+    lines.append(
+        f"\nStrict positional-only (IoU match, no text-match arm): "
+        f"micro F1 {sm.f1:.3f}, macro F1 {strict.macro_f1():.3f}")
     reportText = "\n".join(lines) + "\n"
     (run_dir / "report.md").write_text(reportText)
     print(reportText)
