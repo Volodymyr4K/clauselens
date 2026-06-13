@@ -23,8 +23,14 @@ class TestRetrieval:
             + "This Agreement is governed by the laws of Delaware. " * 5
             + "The widget shall be blue. " * 40
         )
-        top = Retriever(text).top_k("Which law governs the agreement?", k=1)
+        top = Retriever(text).top_k(
+            "Which law governs the agreement?", k=1, include_head=False)
         assert "Delaware" in top[0].text
+
+    def test_include_head_anchors_first_passage(self):
+        text = "Preamble naming the parties. " * 50 + "Unrelated body. " * 200
+        top = Retriever(text).top_k("Who are the parties?", k=2, include_head=True)
+        assert top[0].start == 0  # document head always present
 
     def test_tokenize_lowercases_and_splits(self):
         assert tokenize("Governing-Law, Delaware!") == ["governing", "law", "delaware"]

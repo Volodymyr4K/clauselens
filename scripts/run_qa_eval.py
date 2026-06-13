@@ -45,13 +45,31 @@ def select_contracts(split: str, n: int):
     return [contracts[int(i * stride)] for i in range(n)]
 
 
-def citation_hits_gold(citations, gold_spans) -> bool:
+GOLD_COVERAGE = 0.5
+
+
+def _gold_coverage(cit, g) -> float:
+    """Fraction of the gold span's characters covered by the citation.
+
+    The right question for a Q&A citation is "does the cited passage contain
+    the answer", not "is it a tight span" — so coverage of the gold span, not
+    IoU, is the natural criterion here.
+    """
+    gs, ge = g.start, g.start + len(g.text)
+    inter = max(0, min(cit["end"], ge) - max(cit["start"], gs))
+    return inter / (ge - gs) if ge > gs else 0.0
+
+
+def citation_hits_gold(citations, gold_spans, strict: bool = False) -> bool:
     for c in citations:
         for g in gold_spans:
-            gs, ge = g.start, g.start + len(g.text)
-            if char_iou(c["start"], c["end"], gs, ge) >= IOU_THRESHOLD:
-                return True
             if _norm(c["text"]) == _norm(g.text):
+                return True
+            if strict:
+                gs, ge = g.start, g.start + len(g.text)
+                if char_iou(c["start"], c["end"], gs, ge) >= IOU_THRESHOLD:
+                    return True
+            elif _gold_coverage(c, g) >= GOLD_COVERAGE:
                 return True
     return False
 
@@ -107,7 +125,7 @@ def main() -> None:
 
 def _report(args, run_dir, contracts, done):
     by_title = {c.title: c for c in contracts}
-    present_hits = present_total = 0
+    present_hits = present_strict = present_total = 0
     absent_ok = absent_total = 0
     per_clause: dict[str, list[int]] = {}
 
@@ -119,6 +137,7 @@ def _report(args, run_dir, contracts, done):
         if gold:
             hit = int(citation_hits_gold(rec["citations"], gold))
             present_hits += hit
+            present_strict += int(citation_hits_gold(rec["citations"], gold, strict=True))
             present_total += 1
             per_clause.setdefault(clause, []).append(hit)
         else:
@@ -129,8 +148,9 @@ def _report(args, run_dir, contracts, done):
     lines = [
         f"# Q&A citation eval: {args.run}",
         f"\nContracts: {len({t for t, _ in done})} ({args.split} split)",
-        "\nCitation hit = a cited span matches a gold span (IoU >= "
-        f"{IOU_THRESHOLD} or verbatim).",
+        f"\nCitation hit = a citation covers >= {GOLD_COVERAGE:.0%} of a gold "
+        "span (or matches it verbatim). Coverage, not IoU: a Q&A citation is a "
+        "passage that should contain the answer, not a minimal span.",
         "\n| Clause | hit rate | n |",
         "|---|---|---|",
     ]
@@ -138,6 +158,7 @@ def _report(args, run_dir, contracts, done):
         hits = per_clause[clause]
         lines.append(f"| {clause} | {sum(hits) / len(hits):.2f} | {len(hits)} |")
     hit_rate = present_hits / present_total if present_total else 0.0
+    strict_rate = present_strict / present_total if present_total else 0.0
     abs_rate = absent_ok / absent_total if absent_total else 0.0
     lines.append(
         f"\n**Citation hit rate (clause present): {hit_rate:.2f}** "
@@ -145,6 +166,9 @@ def _report(args, run_dir, contracts, done):
     lines.append(
         f"**Absence handling (clause absent, no citation): {abs_rate:.2f}** "
         f"({absent_ok}/{absent_total})")
+    lines.append(
+        f"\nStrict IoU >= {IOU_THRESHOLD} hit rate (for reference): "
+        f"{strict_rate:.2f} ({present_strict}/{present_total})")
     text = "\n".join(lines) + "\n"
     (run_dir / "report.md").write_text(text)
     print(text)

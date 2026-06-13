@@ -54,8 +54,21 @@ class Retriever:
         self.passages = split_passages(text)
         self._bm25 = BM25Okapi([tokenize(p.text) for p in self.passages])
 
-    def top_k(self, question: str, k: int = 6) -> list[Passage]:
+    def top_k(
+        self, question: str, k: int = 6, include_head: bool = True
+    ) -> list[Passage]:
+        """Top-k passages by BM25, optionally anchored with the document head.
+
+        The preamble (title, parties, date, often governing law) carries the
+        answers to metadata questions that share no keywords with the question
+        ("What is the title?"), where BM25 alone never surfaces it. Anchoring
+        with the head passage fixes that without clause-specific rules. The
+        head is added, not substituted, so no relevant passage is displaced.
+        """
         scores = self._bm25.get_scores(tokenize(question))
         ranked = sorted(
             range(len(self.passages)), key=lambda i: scores[i], reverse=True)
-        return [self.passages[i] for i in ranked[:k]]
+        selected = ranked[:k]
+        if include_head and 0 not in selected:
+            selected = [0, *selected]
+        return [self.passages[i] for i in selected]
