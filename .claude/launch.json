@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "clauselens-web",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "clauselens.web:app", "--port", "8077"],
+      "port": 8077
+    }
+  ]
+}

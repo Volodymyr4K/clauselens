@@ -185,6 +185,11 @@ uv run python scripts/extract_one.py 0
 # ask a question about a contract
 uv run python scripts/ask.py 0 "Which law governs this agreement?"
 
+# launch the web UI: clauses highlighted in the document + cited Q&A
+# (the contract browser works offline from cached extractions; live Q&A
+#  needs an API key and quota)
+uv run uvicorn clauselens.web:app --port 8077   # then open http://localhost:8077
+
 # run the extraction eval (resumable; space requests to respect free limits)
 CLAUSELENS_MIN_INTERVAL=3 uv run python scripts/run_eval.py \
     --run my-run --split train -n 30
