@@ -23,6 +23,10 @@ from clauselens.llm import LLMClient
 
 RUNS_DIR = Path(__file__).resolve().parents[1] / "eval_runs"
 
+# above this chunk-failure fraction a contract is treated as an endpoint
+# failure (not cached, not scored) rather than a real zero-recall result
+MAX_FAIL_RATE = 0.5
+
 
 def select_contracts(split: str, n: int):
     """Deterministic, length-stratified subset: sort by length, even strides."""
@@ -81,6 +85,18 @@ def main() -> None:
                     continue
                 t0 = time.time()
                 result = extract_clauses(contract.text, client)
+                fail_rate = (result.failed_chunks / result.total_chunks
+                             if result.total_chunks else 0.0)
+                # A contract whose chunks mostly failed is an endpoint artifact,
+                # not a result. Do NOT cache it — leave it absent so a later
+                # run retries it instead of baking the network failure into the
+                # metric as false negatives.
+                if fail_rate >= MAX_FAIL_RATE:
+                    print(f"[{i + 1}/{len(contracts)}] SKIP (throttled) "
+                          f"{contract.title} [LOST {result.failed_chunks}/"
+                          f"{result.total_chunks}] — not cached, will retry",
+                          file=sys.stderr)
+                    continue
                 rec = {
                     "title": contract.title,
                     "spans": [dataclasses.asdict(s) for s in result.spans],

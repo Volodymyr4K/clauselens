@@ -3,14 +3,16 @@
 Any OpenAI-compatible endpoint works — switched via environment variables
 (or a .env file), no code changes:
 
-    CLAUSELENS_BASE_URL  (default https://openrouter.ai/api/v1)
-    CLAUSELENS_MODEL     (default google/gemma-4-31b-it:free)
-    CLAUSELENS_API_KEY   (required)
+    CLAUSELENS_BASE_URL     (default https://openrouter.ai/api/v1)
+    CLAUSELENS_MODEL        (default google/gemma-4-31b-it:free)
+    CLAUSELENS_API_KEY      (required)
+    CLAUSELENS_MIN_INTERVAL (seconds between requests, default 0)
 """
 
 import json
 import os
 import re
+import threading
 import time
 
 from dotenv import load_dotenv
@@ -21,6 +23,36 @@ load_dotenv()
 
 class TransientLLMError(Exception):
     """Endpoint hiccup that is worth retrying (throttling, empty response)."""
+
+
+class _RateLimiter:
+    """Process-wide minimum spacing between requests.
+
+    Free tiers cap requests per minute (OpenRouter free: 20/min). Firing chunk
+    requests back to back trips that cap on long runs: the endpoint starts
+    returning 429s and empty bodies, retries exhaust, and whole chunks are
+    lost — silently depressing recall with a network artifact, not a model
+    result. Spacing requests just under the cap avoids tripping it at all. The
+    limit is per account, so the spacing is global, guarded by a lock.
+    """
+
+    def __init__(self, min_interval: float):
+        self.min_interval = min_interval
+        self._lock = threading.Lock()
+        self._next_allowed = 0.0
+
+    def wait(self) -> None:
+        if self.min_interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            sleep_for = self._next_allowed - now
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+            self._next_allowed = time.monotonic() + self.min_interval
+
+
+_rate_limiter = _RateLimiter(float(os.getenv("CLAUSELENS_MIN_INTERVAL", "0")))
 
 
 class LLMClient:
@@ -53,6 +85,7 @@ class LLMClient:
         last_err: Exception | None = None
         for attempt in range(retries + 1):
             try:
+                _rate_limiter.wait()
                 resp = self._client.chat.completions.create(
                     model=self.model,
                     temperature=self.temperature,
